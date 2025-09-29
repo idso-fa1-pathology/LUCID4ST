@@ -1,0 +1,47 @@
+# K8S-related
+logs/
+.log-runner.sh
+done
+._*.yaml
+._Dockerfile
+*.yaml
+lucid_train/*.yaml
+lucid_inference/*.yaml
+lucid_test/*.py
+
+# Mac-related
+.DS_Store
+._.DS_Store
+
+
+
+# model checkpoints
+model/mit*
+
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+._*.py
+*.pyc
+.venv/
+.env
+
+# R
+.Rhistory
+.Rproj.user/
+.RData
+# OS/IDE
+.DS_Store
+.vscode/
+# Data/outputs (adjust to your needs)
+*.tiff
+*.tif
+*.ndpi
+*.svs
+*.pt
+*.h5
+*.hdf5
+
+
