@@ -23,7 +23,6 @@ parser.add_argument('-n', '--nfile', dest='nfile', help='the nfile-th file', def
 parser.add_argument('-ps', '--patch_size', dest='patch_size', help='the size of the input', default=768, type=int)
 parser.add_argument('-sf', '--scale_factor', dest='scale', help='how many times to scale compared to x20', default=0.0625, type=float)
 parser.add_argument('-nJ', '--number_pods', dest='nJob', help='how many pods to be used in K8s', default=32, type=int)
-parser.add_argument('-cp', '--check_point', dest='ckpt', help='the checkpoint to be used for inference', default='cnn')
 parser.add_argument('-b2b', '--brown_to_black', dest='brown2balck', help='wheter to convert brown color to black', action='store_true')
 args = parser.parse_args()
 
@@ -49,7 +48,7 @@ else:
 for i in range(start_file, end_file):
     ######step1: generate growth pattern for tiles
     generate_pgmn(datapath=args.data_dir, save_dir=args.save_dir, file_pattern=args.file_name_pattern, nfile=i,
-                patch_size=args.patch_size, patch_stride=192, nClass=2, checkpoint=args.ckpt, brown_black=args.brown2balck)
+                patch_size=args.patch_size, patch_stride=192, nClass=2, brown_black=args.brown2balck)
 
     #######step2: stich to ss1 level
     ss1_stich(cws_folder=args.data_dir, annotated_dir=args.save_dir, output_dir=args.save_dir_ss1,  nfile=i, file_pattern=args.file_name_pattern, downscale=args.scale)
