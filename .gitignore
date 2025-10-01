@@ -9,10 +9,10 @@ lucid_train/*.yaml
 lucid_inference/*.yaml
 lucid_test/*.py
 
+
 # Mac-related
 .DS_Store
 ._.DS_Store
-
 
 
 # model checkpoints
@@ -27,6 +27,12 @@ __pycache__/
 *.pyc
 .venv/
 .env
+
+
+# specific file
+st_analysis/visium/pm_spot_dbscan_step2*.py
+st_analysis/visium/pm_spot_dbscan_step3*.py
+
 
 # R
 .Rhistory
