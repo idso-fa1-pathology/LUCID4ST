@@ -29,10 +29,13 @@ __pycache__/
 .env
 
 
-# specific file
+# specific files or folders
 st_analysis/visium/pm_spot_dbscan_step2*.py
 st_analysis/visium/pm_spot_dbscan_step3*.py
-
+visium_spacet_xenium_singler/*
+data/*
+img_postprocess/*
+pm_he_analysis/*
 
 # R
 .Rhistory
