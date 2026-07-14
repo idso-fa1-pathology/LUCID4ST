@@ -8,7 +8,7 @@ The model is binary: every pixel is classified as either `background` (class 0) 
 
 Download the training/testing set from Zenodo: <https://zenodo.org/records/17363430> (DOI `10.5281/zenodo.17363430`). Files are access-restricted for peer review; log in to Zenodo to request/confirm access.
 
-`lucid_train/train_segformer.py` expects the extracted data as an `image/` folder of PNG patches and a matching `maskPng/` folder of `mask_<name>.png` label patches (each mask a single-channel PNG where anthracosis pixels are non-zero). Set `image_dir` and `mask_dir` in the `if __name__ == "__main__":` block at the bottom of the script to point at wherever you extract these.
+`lucid_train/train_segformer.py` expects the extracted data as an `image/` folder of PNG patches and a matching `mask/` folder of `mask_<name>.png` label patches (each mask a single-channel PNG where anthracosis pixels are non-zero). You point the training script at these folders on the command line in step 4 (`-i`/`-l`).
 
 ### 2. Clone this repository
 
@@ -44,13 +44,16 @@ This drops you into a bash shell inside the container at `/App`, with `lucid_tra
 cd ./lucid_train
 ```
 
-All paths and hyperparameters live in the `if __name__ == "__main__":` block at the bottom of `train_segformer.py`. Set `image_dir` and `mask_dir` (from step 1) there, then run:
+Pass the data folders (from step 1) on the command line -- nothing in the script needs editing:
 
 ```         
-/usr/bin/python3 train_segformer.py
+/usr/bin/python3 train_segformer.py \
+    -i /data/image \
+    -l /data/mask \
+    -o ../lucid_inference/model
 ```
 
-The script fine-tunes `nvidia/mit-b3` (downloaded automatically from Hugging Face) at 512x512 for 60 epochs, batch size 8, Adam with learning rate 1e-4. It saves the final model to `lucid_inference/model/mit-b3-finetuned-anthracosis-e60-lr00001adam-s512`, which is the checkpoint the inference step loads.
+`-i`/`--image_dir` is the training folder of PNG image patches, `-l`/`--mask_dir` the training folder of `mask_<name>.png` labels, and `-o`/`--output_dir` (default `../lucid_inference/model`) is where the fine-tuned model is written.
 
 ### 5. Evaluation
 

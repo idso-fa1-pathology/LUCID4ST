@@ -1,4 +1,5 @@
 import os
+import argparse
 import random as rn
 from glob import glob
 from pathlib import Path
@@ -169,18 +170,23 @@ def main(
 if __name__ == "__main__":
 
     # -----------------------
+    # Paths (passed on the command line)
+    # -----------------------
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-i', '--image_dir', dest='image_dir', required=True, help='training folder of PNG image patches')
+    parser.add_argument('-l', '--mask_dir', dest='mask_dir', required=True, help='training folder of mask_<name>.png label patches')
+    parser.add_argument('-o', '--output_dir', dest='output_dir', default='../lucid_inference/model', help='where to save the fine-tuned model')
+    args = parser.parse_args()
+
+    # -----------------------
     # Hyperparameter settings
     # -----------------------
-    image_dir = "/path_to_train_set/image"
-    mask_dir = "/path_to_train_set/maskPng"
-
     image_size = 512
     learning_rate = 0.0001
     batch_size = 8
     num_epochs = 60
 
     model_checkpoint = "nvidia/mit-b3"
-    output_dir = "../lucid_inference/model"
     output_suffix = "finetuned-anthracosis-e60-lr00001adam-s512"
 
     # -----------------------
@@ -194,14 +200,14 @@ if __name__ == "__main__":
     label2id = {name: idx for idx, name in id2label.items()}
 
     main(
-        image_dir=image_dir,
-        mask_dir=mask_dir,
+        image_dir=args.image_dir,
+        mask_dir=args.mask_dir,
         image_size=image_size,
         learning_rate=learning_rate,
         batch_size=batch_size,
         num_epochs=num_epochs,
         model_checkpoint=model_checkpoint,
-        output_dir=output_dir,
+        output_dir=args.output_dir,
         output_suffix=output_suffix,
         id2label=id2label,
         label2id=label2id,
