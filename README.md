@@ -2,7 +2,7 @@
 
 This repository is for the manuscript "AI-guided spatial path-omics reveals pollutant-induced microenvironment reprogramming in lung adenocarcinoma". It guides you to generate PM (particulate-matter / anthracosis) deposit masks on whole-slide images with a well-trained SegFormer model for semantic segmentation.
 
-The model is binary: every pixel is classified as either `background` (class 0) or `anthracosis` (class 1). The pipeline includes training (`lucid_train`), evaluation (lucid_evaluation), and inference (`lucid_inference`).
+The model is binary: every pixel is classified as either `background` (class 0) or `anthracosis` (class 1). The pipeline includes training (`lucid_train`), evaluation (`lucid_evaluation`), and inference (`lucid_inference`).
 
 ### 1. Training data
 
@@ -30,13 +30,13 @@ Mount this repo into the container at `/App` (the image's `WORKDIR`), and pass `
 ```         
 docker run --gpus all -it --rm \
     -v /path/to/LUCID4ST:/App \
-    -v /path/to/training_set:/data \
+    -v /path/to/datasets:/data \
     -v /path/to/raw_slides:/slides \
     -v /path/to/output:/output \
     lucid
 ```
 
-This drops you into a bash shell inside the container at `/App`, with `lucid_train`, `lucid_evaluation`, and `lucid_inference` directly available. The model saved by training lives inside the repo (`lucid_inference/model/...`), so it comes along for free with the `/App` mount -- no separate mount needed for it. From there, run the commands in steps 4-6, using `/data/...` for training data, `/slides` for the inference input, and `/output` for results.
+This drops you into a bash shell inside the container at `/App`, with `lucid_train`, `lucid_evaluation`, and `lucid_inference` directly available. The model saved by training lives inside the repo (`lucid_inference/model/...`), so it comes along for free with the `/App` mount -- no separate mount needed for it. Mount the parent folder that holds both datasets at `/data`, so `training_set/` and `testing_set/` sit side by side (`/data/training_set` and `/data/testing_set`). From there, run the commands in steps 4-6, using `/data/...` for the training and test data, `/slides` for the inference input, and `/output` for results.
 
 ### 4. Training
 
@@ -48,8 +48,8 @@ Pass the data folders (from step 1) on the command line -- nothing in the script
 
 ```         
 /usr/bin/python3 train_segformer.py \
-    -i /data/image \
-    -l /data/mask \
+    -i /data/training_set/image \
+    -l /data/training_set/mask \
     -o ../lucid_inference/model
 ```
 
@@ -57,27 +57,20 @@ Pass the data folders (from step 1) on the command line -- nothing in the script
 
 ### 5. Evaluation
 
-Evaluation runs the trained model on held-out test patches and scores the predictions with the Dice coefficient. Both scripts take no command-line arguments -- edit the paths near the top before running.
-
-Generate patch-level predictions:
+`evaluate.py` runs prediction and metric scoring in a single command over a test set laid out as `image/` (PNG patches) and `mask/` (ground-truth labels, named `mask_<name>.png` or `<name>.png`):
 
 ```         
 cd ./lucid_evaluation
+/usr/bin/python3 evaluate.py \
+    -d /data/testing_set \
+    -m ../lucid_inference/model/mit-b3-finetuned-anthracosis-e60-lr00001adam-s512 \
+    -o /output
 ```
 
-In `predict_patch_pgmn_segformer.py`, set `model_checkpoint` to your trained model (`lucid_inference/model/mit-b3-finetuned-anthracosis-e60-lr00001adam-s512`), and set `datapath` (test patches) and `save_dir` (where predicted masks are written), then run:
+`-d` is the test-set root (containing `image/` and `mask/`), `-m` is the trained model, and `-o` is where results are written (defaults to `-d`). `-ps` is the model input size (default 512, matching training). It writes:
 
-```         
-/usr/bin/python3 predict_patch_pgmn_segformer.py
-```
-
-Score against ground truth:
-
-```         
-/usr/bin/python3 evaluation_pgmn.py
-```
-
-Edit `pred_mask` (the `save_dir` from the previous script), `gt_mask` (folder of `mask_<name>.png` ground-truth masks), and the output CSV path at the top of `evaluation_pgmn.py`. It writes a per-patch Dice table to that CSV.
+-   predicted masks to `<-o>/evaluation_mask/` (one PNG per input patch, same file name), and
+-   `<-o>/evaluation_metrics.csv` with one row per patch: `file_name`, `dice`, `precision`, `recall`, `iou`, `accuracy`, and `gt_label` (the second-to-last token of the file name split by `_`).
 
 ### 6. Inference
 

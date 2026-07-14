@@ -7,7 +7,6 @@ done
 *.yaml
 lucid_train/*.yaml
 lucid_inference/*.yaml
-lucid_evaluation/*.py
 
 
 # Mac-related
