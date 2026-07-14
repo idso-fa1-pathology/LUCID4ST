@@ -1,122 +1,208 @@
+import os
+import random as rn
+from glob import glob
+from pathlib import Path
+
 import numpy as np
 import tensorflow as tf
-import random as rn
-import os
-from glob import glob
-from tensorflow.keras import backend
-from transformers import create_optimizer
+from tensorflow.keras.optimizers import Adam
 from transformers import TFAutoModelForSemanticSegmentation
-from transformers import DefaultDataCollator
-from transformers.keras_callbacks import KerasMetricCallback, PushToHubCallback
-from transformers import AutoImageProcessor
-from tensorflow.keras.optimizers import Adam, AdamW
-from tensorflow.keras.losses import binary_crossentropy, categorical_crossentropy, sparse_categorical_crossentropy, CategoricalCrossentropy
-from pandas import DataFrame
 
 
-
-img = glob('/path_to_train_set/image/*.png') 
-num_img = len(img)
-print(num_img)
-img_names = [path.split('/image/')[1].split('.png')[0] for path in img]
-label = ['/path_to_train_set/maskPng/' + 'mask_' + name + '.png' for name in img_names]
+def set_seed(seed):
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+    rn.seed(seed)
 
 
-train_ds = tf.data.Dataset.from_tensor_slices((img, label))
-
-image_size = 512
-learning_rate = 0.0001
-auto = tf.data.AUTOTUNE
-batch_size = 8
-num_epochs = 60
+def read_image(img_path, image_size):
+    image = tf.io.read_file(img_path)
+    image = tf.image.decode_png(image, channels=3)
+    image = tf.image.resize(image, [image_size, image_size])
+    return image
 
 
-def read_image(img):
-    img = tf.io.read_file(img)
-    img = tf.image.decode_png(img, channels=3)
-    img = tf.image.resize(img, [image_size, image_size])
-    return img
-
-def read_mask(img):
-    img = tf.io.read_file(img)
-    img = tf.image.decode_png(img, channels=1)
-    img = tf.image.resize(img, [image_size, image_size])
-    return img
-
-
-#######################
-def rand_crop(img, mask):
-    concat_img = tf.concat([img, mask], axis=-1)
-    concat_img = tf.image.resize(concat_img, [280, 560], method=tf.image.ResizeMethod.NEAREST_NEIGHBOR)
-    crop_img = tf.image.random_crop(concat_img, [256, 256, 4])
-    return crop_img[:, :, :3], crop_img[:, :, 3:]
-
-def norm(image, mask):
-    image = tf.cast(image, tf.float32) / 0.5 - 1
-    #mask = tf.cast(mask, tf.int32)
-    return image, mask
-
-def normalize(input_image, input_mask):
-    input_image = tf.image.convert_image_dtype(input_image, tf.float32)
-    input_mask /= 255.
-    #input_mask = tf.image.convert_image_dtype(input_mask, tf.int32)
-    return input_image, tf.math.ceil(input_mask)
-#######################
+def read_mask(mask_path, image_size):
+    mask = tf.io.read_file(mask_path)
+    mask = tf.image.decode_png(mask, channels=1)
+    mask = tf.image.resize(
+        mask,
+        [image_size, image_size],
+        method=tf.image.ResizeMethod.NEAREST_NEIGHBOR,
+    )
+    return mask
 
 
 def aug_transforms(image):
-    image /= 255.0
+    image = tf.cast(image, tf.float32) / 255.0
     image = tf.image.random_brightness(image, 0.25)
     image = tf.image.random_contrast(image, 0.5, 2.0)
     image = tf.image.random_saturation(image, 0.8, 2.0)
     image = tf.image.random_hue(image, 0.1)
     return image
 
-def load_img_train(img, mask):
-    image = read_image(img)
-    mask = read_mask(mask)
+
+def load_img_train(img_path, mask_path, image_size):
+    image = read_image(img_path, image_size)
+    mask = read_mask(mask_path, image_size)
+
     image = aug_transforms(image)
-    image, mask = normalize(image, mask)
-    image = tf.transpose(image, (2, 0, 1)) #for segformer
+
+    # For TF SegFormer: channels-first input, C x H x W
+    image = tf.transpose(image, (2, 0, 1))
+
+    # Binary masks are stored as 0/255; map them to integer class IDs {0, 1}
+    mask = tf.cast(mask, tf.float32) / 255.0
+    mask = tf.math.ceil(mask)
     mask = tf.squeeze(mask, axis=-1)
+    mask = tf.cast(mask, tf.int32)
+
     return image, mask
 
-def load_img_val(img, mask):
-    image = read_image(img)
-    mask = read_mask(mask)
-    return normalize(image, mask)
 
-train_ds = train_ds.map(load_img_train, num_parallel_calls=auto)
-train_ds = train_ds.repeat()
-train_ds = train_ds.batch(batch_size)
-train_ds = train_ds.prefetch(tf.data.AUTOTUNE)
+def build_dataset(image_paths, mask_paths, image_size, batch_size):
+    dataset = tf.data.Dataset.from_tensor_slices((image_paths, mask_paths))
 
-id2label = {
-    0:  'background',
-    1:  'anthracosis',
-}
-label2id = {label: id for id, label in id2label.items() }
-num_labels = len(id2label)
+    dataset = dataset.map(
+        lambda img, mask: load_img_train(img, mask, image_size),
+        num_parallel_calls=tf.data.AUTOTUNE,
+    )
+
+    dataset = dataset.repeat()
+    dataset = dataset.batch(batch_size)
+    dataset = dataset.prefetch(tf.data.AUTOTUNE)
+
+    return dataset
 
 
-model_checkpoint = "nvidia/mit-b3"
-optimizer = Adam(learning_rate=learning_rate)
+def get_image_and_mask_paths(image_dir, mask_dir):
+    image_paths = sorted(glob(os.path.join(image_dir, "*.png")))
 
-model = TFAutoModelForSemanticSegmentation.from_pretrained(model_checkpoint, num_labels=num_labels,
-                                                           id2label=id2label, label2id=label2id, ignore_mismatched_sizes=True)
+    image_names = [Path(path).stem for path in image_paths]
+
+    mask_paths = [
+        os.path.join(mask_dir, f"mask_{name}.png")
+        for name in image_names
+    ]
+
+    return image_paths, mask_paths
 
 
-model.compile(optimizer=optimizer)
+def check_mask_paths(mask_paths):
+    missing_masks = [path for path in mask_paths if not os.path.exists(path)]
 
-#metric_callback = KerasMetricCallback(metric_fn=compute_metrics, eval_dataset=data_generator(val_image_generator, val_mask_generator), batch_size=batch_size)
+    if missing_masks:
+        print(f"[WARNING] Missing {len(missing_masks)} mask files.")
+        print("First few missing masks:")
+        for path in missing_masks[:10]:
+            print(path)
 
-model_name = model_checkpoint.split("/")[-1]
-model_id = f"{model_name}-finetuned-anthracosis-e60-lr00001adam-s512"
+        raise FileNotFoundError("Some mask files are missing.")
 
-model.fit(
-    train_ds,
-    steps_per_epoch=num_img // batch_size,
-    epochs=num_epochs, verbose=1
-)
-model.save_pretrained(model_id)
 
+def main(
+    image_dir,
+    mask_dir,
+    image_size,
+    learning_rate,
+    batch_size,
+    num_epochs,
+    model_checkpoint,
+    output_dir,
+    output_suffix,
+    id2label,
+    label2id,
+):
+    set_seed(2023)
+    os.makedirs(output_dir, exist_ok=True)
+
+    image_paths, mask_paths = get_image_and_mask_paths(
+        image_dir=image_dir,
+        mask_dir=mask_dir,
+    )
+
+    num_img = len(image_paths)
+    print(f"Number of training images: {num_img}")
+
+    if num_img == 0:
+        raise ValueError(f"No PNG images found in: {image_dir}")
+
+    check_mask_paths(mask_paths)
+
+    train_ds = build_dataset(
+        image_paths=image_paths,
+        mask_paths=mask_paths,
+        image_size=image_size,
+        batch_size=batch_size,
+    )
+
+    optimizer = Adam(learning_rate=learning_rate)
+
+    num_labels = len(id2label)
+
+    model = TFAutoModelForSemanticSegmentation.from_pretrained(
+        model_checkpoint,
+        num_labels=num_labels,
+        id2label=id2label,
+        label2id=label2id,
+        ignore_mismatched_sizes=True,
+    )
+
+    model.compile(optimizer=optimizer)
+
+    model_name = Path(model_checkpoint).name
+    model_id = os.path.join(output_dir, f"{model_name}-{output_suffix}")
+
+    steps_per_epoch = max(1, num_img // batch_size)
+
+    model.fit(
+        train_ds,
+        steps_per_epoch=steps_per_epoch,
+        epochs=num_epochs,
+        verbose=1,
+    )
+
+    model.save_pretrained(model_id)
+    print(f"Model saved to: {model_id}")
+
+
+if __name__ == "__main__":
+
+    # -----------------------
+    # Hyperparameter settings
+    # -----------------------
+    image_dir = "/path_to_train_set/image"
+    mask_dir = "/path_to_train_set/maskPng"
+
+    image_size = 512
+    learning_rate = 0.0001
+    batch_size = 8
+    num_epochs = 60
+
+    model_checkpoint = "nvidia/mit-b3"
+    output_dir = "../lucid_inference/model"
+    output_suffix = "finetuned-anthracosis-e60-lr00001adam-s512"
+
+    # -----------------------
+    # Label settings
+    # -----------------------
+    id2label = {
+        0: "background",
+        1: "anthracosis",
+    }
+
+    label2id = {name: idx for idx, name in id2label.items()}
+
+    main(
+        image_dir=image_dir,
+        mask_dir=mask_dir,
+        image_size=image_size,
+        learning_rate=learning_rate,
+        batch_size=batch_size,
+        num_epochs=num_epochs,
+        model_checkpoint=model_checkpoint,
+        output_dir=output_dir,
+        output_suffix=output_suffix,
+        id2label=id2label,
+        label2id=label2id,
+    )

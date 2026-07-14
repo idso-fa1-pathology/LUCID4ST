@@ -13,6 +13,7 @@ lucid_test/*.py
 # Mac-related
 .DS_Store
 ._.DS_Store
+**/._*
 
 
 # model checkpoints
