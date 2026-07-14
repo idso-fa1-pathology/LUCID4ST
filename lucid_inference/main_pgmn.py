@@ -57,8 +57,8 @@ for wsi in job_files:
     if os.path.exists(os.path.join(cws_dir, wsi_name, 'Ss1.jpg')):
         print('CWS tiles already exist for %s, skipping tiling' % wsi_name)
     else:
-        run_generate_cws(wsi_input=wsi, output_dir=cws_dir, tif_obj=40, cws_objective_value=20,
-                         in_mpp=None, out_mpp=args.output_mpp, file_name_pattern=file_pattern, parallel=False)
+        run_generate_cws(wsi_input=wsi, output_dir=cws_dir, out_mpp=0.22,
+                         file_name_pattern=file_pattern, parallel=False)
 
     ######step1: generate pgmn masks for tiles
     generate_pgmn(datapath=cws_dir, save_dir=mask_dir, model=model, file_pattern=file_pattern, file_name=wsi_name,
