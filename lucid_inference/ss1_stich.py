@@ -6,10 +6,15 @@ import cv2
 import re
 
 
-def ss1_stich(cws_folder, annotated_dir, output_dir, nfile=0, file_pattern='*.ndpi', downscale=0.0625):
-    cws_files = sorted(glob(os.path.join(cws_folder, file_pattern)))
+def ss1_stich(cws_folder, annotated_dir, output_dir, nfile=0, file_pattern='*.ndpi', downscale=0.0625, file_name=None):
     if os.path.exists(output_dir) is False:
         os.makedirs(output_dir)
+
+    if file_name is None:
+        cws_files = sorted(glob(os.path.join(cws_folder, file_pattern)))
+        wsi_name = os.path.split(cws_files[nfile])[-1]
+    else:
+        wsi_name = file_name
 
     def natural_key(string_):
         return [int(s) if s.isdigit() else s for s in re.split(r'(\d+)', string_)]
@@ -23,7 +28,6 @@ def ss1_stich(cws_folder, annotated_dir, output_dir, nfile=0, file_pattern='*.nd
         if iteration == total:
             print()
 
-    wsi_name = os.path.split(cws_files[nfile])[-1]
     if os.path.exists(os.path.join(cws_folder, wsi_name, 'Ss1.jpg')):
         if os.path.exists(os.path.join(output_dir, wsi_name + "_Ss1.png")):
             print(wsi_name, 'exists')
@@ -44,7 +48,7 @@ def ss1_stich(cws_folder, annotated_dir, output_dir, nfile=0, file_pattern='*.nd
             print('\n%s, Target size: %i,%i, level_2 size: %i,%i' % (os.path.basename(wsi_name), w, h, ss1.shape[1], ss1.shape[0]))
             img_all = np.zeros((max(h, ss1.shape[0])+1, max(ss1.shape[1],w)+1, 3))
 
-            drivepath, imagename = os.path.split(cws_files[nfile])
+            imagename = wsi_name
             annotated_dir_slide = os.path.join(annotated_dir, imagename)
             annotated_path = annotated_dir_slide
             images = sorted(glob(os.path.join(annotated_path, 'Da*')), key=natural_key)

@@ -114,7 +114,7 @@ class Patches:
         num_patches_img = self.num_patches_img_h*self.num_patches_img_w
         self.num_patches_img = num_patches_img
         iter_tot = 0
-        img_patches = np.zeros((num_patches_img, 384, 384, image.shape[2]), dtype=image.dtype)
+        img_patches = np.zeros((num_patches_img, img_patch_h, img_patch_w, image.shape[2]), dtype=image.dtype)
         for h in range(int(math.ceil((img_h - img_patch_h) / stride_h + 1))):
             for w in range(int(math.ceil((img_w - img_patch_w) / stride_w + 1))):
                 start_h = h * stride_h
@@ -129,7 +129,7 @@ class Patches:
                     start_w = img_w - img_patch_w
                     end_w = img_w
 
-                img_patches[iter_tot, :, :, :] = cv2.resize(image[start_h:end_h, start_w:end_w, :], (384, 384))
+                img_patches[iter_tot, :, :, :] = image[start_h:end_h, start_w:end_w, :]
                 iter_tot += 1
 
         return img_patches
@@ -194,12 +194,17 @@ class Patches:
         return image
 
 
-def generate_pgmn(datapath, save_dir, file_pattern='*.svs', nfile=0, patch_size=384, patch_stride=192, nClass=2, brown_black=False):
+def load_segmentation_model(model_checkpoint):
+    """Load the trained model once so it can be reused across slides."""
+    return TFAutoModelForSemanticSegmentation.from_pretrained(model_checkpoint)
+
+
+def generate_pgmn(datapath, save_dir, model, file_pattern='*.svs', nfile=0, patch_size=512, patch_stride=192, nClass=2, brown_black=False, file_name=None):
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
-    files = sorted(glob(os.path.join(datapath, file_pattern)))[nfile]
-    
-    file_name = os.path.basename(files)
+
+    if file_name is None:
+        file_name = os.path.basename(sorted(glob(os.path.join(datapath, file_pattern)))[nfile])
     print(file_name)
     test_img_dir = os.path.join(datapath, file_name)
     save_dir_file = os.path.join(save_dir, file_name)
@@ -207,8 +212,6 @@ def generate_pgmn(datapath, save_dir, file_pattern='*.svs', nfile=0, patch_size=
         os.makedirs(save_dir_file)
 
     imgs = sorted(glob(os.path.join(test_img_dir, 'Da*')))
-    model_checkpoint = '/path/model/mit-b3-finetuned-anthracosis-e60-lr00001adam-s512'  #final model
-    model = TFAutoModelForSemanticSegmentation.from_pretrained(model_checkpoint)
     for im_f in imgs:
         img_name = os.path.splitext(os.path.basename(im_f))[0]
         if not os.path.exists(os.path.join(save_dir_file, img_name + '.png')):
