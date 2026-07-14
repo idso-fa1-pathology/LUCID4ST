@@ -93,7 +93,17 @@ cd ./lucid_inference
     -nJ 1
 ```
 
-`main_pgmn.py` runs three steps per slide, in order: (0) tile the slide into CWS tiles, (1) predict per tile with `predict_pgmn.py`, then (2) stitch to slide level with `ss1_stich.py`. `-d` is the folder of raw slides and `-o` is a single output root -- `cws_tiling/`, `mask_cws/`, and `mask_ss1/` are created inside it automatically. `-m` is the path to your trained model (the one saved by step 4, `lucid_inference/model/mit-b3-finetuned-anthracosis-e60-lr00001adam-s512`; relative to `lucid_inference` it is just `model/...`). `-p` must match the slide file names (e.g. `"*.svs"`, `"*.ndpi"`). The example omits `-mpp`, which defaults to `0.22` -- the reference resolution at the 40x objective; since tiles are generated at 20x (`cws_objective_value=20`), the actual output tile resolution is `2 x -mpp = 0.44` mpp. The model input resize (576 px, in `predict_pgmn.py`) is tuned to that 0.44 mpp output so that inference patches match the training scale, so you normally should not change `-mpp`. `-ps` is the patch size (512, the extraction window) and `-sf` is the slide-level downscale factor. `-n`/`-nJ` split the file list across parallel jobs (`-n` is the 0-based job index, `-nJ` the number of jobs; use `-n 0 -nJ 1` to process everything on one machine). Each job tiles, predicts, and stitches only its own slice of the file list -- slides are matched by name, so jobs can run concurrently against the same `-o` without interfering. The number of classes is fixed to 2 (background + anthracosis) inside the script. Slides already tiled are skipped on re-runs.
+`main_pgmn.py` runs three steps per slide, in order: (0) tile the slide into CWS tiles, (1) predict per tile with `predict_pgmn.py`, then (2) stitch to slide level with `ss1_stich.py`.
+
+`-d` is the folder of raw slides and `-o` is a single output root -- `cws_tiling/`, `mask_cws/`, and `mask_ss1/` are created inside it automatically.
+
+`-m` is the path to your trained model (the one saved by step 4, `lucid_inference/model/mit-b3-finetuned-anthracosis-e60-lr00001adam-s512`; relative to `lucid_inference` it is just `model/...`).
+
+`-p` must match the slide file names (e.g. `"*.svs"`, `"*.ndpi"`).
+
+`-ps` is the patch size (512, the extraction window) and `-sf` is the slide-level downscale factor.
+
+`-n`/`-nJ` split the file list across parallel jobs (`-n` is the 0-based job index, `-nJ` the number of jobs; use `-n 0 -nJ 1` to process everything on one machine). Each job tiles, predicts, and stitches only its own slice of the file list -- slides are matched by name, so jobs can run concurrently against the same `-o` without interfering.
 
 Output layout under `-o`:
 
