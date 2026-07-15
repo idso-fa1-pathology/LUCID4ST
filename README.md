@@ -119,3 +119,58 @@ The model has two classes, so each pixel in the output masks is colored by its p
 | 1        | (255, 255, 255) | anthracosis |
 
 Anthracosis (PM deposit) appears white on a black background in both the per-tile masks (`mask_cws`) and the stitched slide-level mask (`mask_ss1`).
+
+### 8. Tumor boundary inference
+
+The repository also includes a separate tumor boundary pipeline: a SegFormer (`nvidia/mit-b5`) model that segments the tumor boundary from H&E slides. Inference is a standalone step under `tube_inference/` and does not depend on the anthracosis model above. Lung pollutant index (LPI) at distinct compartment can therefore be calculated.
+
+**Download the model checkpoint** from Hugging Face and place it under `tube_inference/model/` -- this exact path is what the `-m` flag below points to:
+
+```         
+pip install -U huggingface_hub
+```
+
+``` python
+from pathlib import Path
+import shutil
+from huggingface_hub import hf_hub_download
+
+repo_id = "idso-fa1-pathology/<TUBE-MODEL-REPO>"   # <-- replace with the tumor boundary model repo
+subfolder = "mit-b5-finetuned-tbed-s512-Ss1x1536"
+# IMPORTANT: save it under this exact name/path -- it's what the -m flag below points to.
+output_dir = Path("./tube_inference/model/mit-b5-finetuned-tbed-s512-Ss1x1536")
+output_dir.mkdir(parents=True, exist_ok=True)
+
+for filename in ["config.json", "tf_model.h5"]:
+    downloaded_file = hf_hub_download(repo_id=repo_id, filename=filename, subfolder=subfolder, repo_type="model")
+    shutil.copy(downloaded_file, output_dir / filename)
+```
+
+**Run inference:**
+
+```         
+cd ./tube_inference
+/usr/bin/python3 main_tbed.py \
+    -d /slides \
+    -o /output \
+    -m model/mit-b5-finetuned-tbed-s512-Ss1x1536 \
+    -p "*.svs" \
+    -t \
+    -ps 1536 \
+    -ins 512 \
+    -nC 2 \
+    -n 0 \
+    -nJ 1
+```
+
+`main_tbed.py` loads the model once and, per slide, produces a slide-level tumor boundary mask. `-m` is the downloaded checkpoint (relative to `tube_inference` it is just `model/...`). `-t`/`--tiling` toggles CWS tiling: with `-t`, `-d` is a folder of raw slides and tiling (shared code in `lucid_inference/cws_tiling`) builds `Ss1` into `<-o>/cws_tiling/` first; without `-t`, `-d` must already contain `<slide>/Ss1.jpg`. `-ps` is the patch cropped from `Ss1`, `-ins` the model input size, `-nC` the number of classes, and `-n`/`-nJ` split the slide list across parallel jobs (matched by name). Tumor boundary masks are written to `<-o>/mask_tbed/`.
+
+**Optional post-processing.** Add `-tme /path/to/tme_masks` to refine each tumor boundary mask against a TME tissue mask -- it drops alveoli/muscle/adipose regions, removes connected components smaller than 10000 px, and smooths the result. Refined masks are written to `<-o>/mask_tme_tbed/`. All post-processing hyperparameters are fixed in `tube_inference/post_process.py`; only the TME mask path is passed in.
+
+Output layout under `-o`:
+
+```         
+/output/cws_tiling/       CWS tiles incl. Ss1.jpg (only with -t)
+/output/mask_tbed/        slide-level tumor boundary mask (<slide>_tbed.png)
+/output/mask_tme_tbed/    post-processed mask (only with -tme; <slide>_tme_tbed.png)
+```
