@@ -22,6 +22,7 @@ library(patchwork)  # for combining plots
 library(ggtext)        # nice facet labels
 library(scales)        # percent formatter
 library(ComplexHeatmap)
+library(tidyverse)
 #if (!require("BiocManager", quietly = TRUE))
 #  install.packages("BiocManager")
 #BiocManager::install("ComplexHeatmap")
@@ -34,8 +35,6 @@ library(car) #Anova
 library(patchwork)
 
 setwd('/Volumes/yuan_lab/TIER2/anthracosis/0AI_PM_ST_code/pm_he_analysis')
-
-
 in_house <- read.csv('../data/in_house_all.csv')
 tcga <- read.csv('../data/tcga_all.csv')
 cptac <-read.csv('../data/cptac_all.csv')
@@ -655,7 +654,7 @@ ggsave(fig3e1, file='./figure3/fig3e_pgmn_neighbour_tmeper_Pie_inhouse.pdf', wid
 
 
 ###statistical comparison with global tme per, Figure 3f
-tme_pgmn_global <- read.csv('../data/tme_pgmn20_global_inhouse.csv')
+tme_pgmn_global_inhouse <- read.csv('../data/in_house_tme_pgmn20_global.csv')
 
 cell_map <- c(
   tumor = "Tumor",       tumor_per = "Tumor",
@@ -667,7 +666,7 @@ cell_map <- c(
   macrophage = "Macrophage", macro_per = "Macrophage"
 )
 
-long <- tme_pgmn_global %>%
+long <- tme_pgmn_global_inhouse %>%
   dplyr::select(ID,
                 tumor, tumor_per,
                 stroma, stroma_per,
@@ -711,118 +710,8 @@ ggsave(fig3f, file='./figure3/fig3f_pgmn_neighbour20_global_in_house.pdf', width
 
 
 ###TCGA
-tcga_slide <- read.csv('/Volumes/xpan7/pipelines/anthracosis/Ranalysis/outputdata/tcga_allslideID_keep.csv')
-#patients to be kept
-tcga <- read.csv('/Volumes/xpan7/pipelines/anthracosis/Ranalysis/outputdata/tcgaLNRE_MUTcell_Aug20.csv')
-tcga <- tcga %>%
-  filter(stage %in% c('I', 'II', 'III', 'IV')) %>%
-  filter(aci_per >=0)
-
-tcga_patient <- tcga[c('patient_id', 'type')]
-rm(tcga)
-colnames(tcga_patient)[colnames(tcga_patient) == 'type'] <- 'sk_type'
-tcga_slidere <- tcga_slide %>%
-  filter(patient_id %in% tcga_patient$patient_id) %>%
-  left_join(tcga_patient, by = 'patient_id')
-
-length(unique(tcga_slidere$patient_id)) #384
-length(unique(tcga_patient$patient_id))
-
-pattern = '_TMEper.xlsx' #'Neighbour_TMEper.xlsx'
-dilate_pattern = 'dilate28'
-tme_pgmn <- read_excel(paste0('/Volumes/yuan_lab/TIER2/anthracosis/tcga-luad/pgmn_segformer_stainedgeV3/0neighbourTME/', dilate_pattern, '/pgmnNeighbour', pattern))
-colnames(tme_pgmn)[colnames(tme_pgmn) == 'file_name'] <- 'ID'
-tme_pgmn_tbed <- tme_pgmn %>%
-  filter(region_type == 'tbed')
-tme_pgmn_lung <- tme_pgmn %>%
-  filter(region_type == 'lung')
-
-tme_pgmn_tbedre <- tme_pgmn_tbed %>%
-  right_join(tcga_slidere, by='ID')
-
-tme_pgmn_lungre <- tme_pgmn_lung %>%
-  right_join(tcga_slidere, by='ID')
-
-
-#433 slides
-sum(tme_pgmn_tbedre$type == 'T' | tme_pgmn_tbedre$type == 'TRUE') #433 slides
-
-tme_pgmn_tbedre_ns <- tme_pgmn_tbedre %>%
-  filter(sk_type == 'never')
-#62 slides
-sum(tme_pgmn_tbedre_ns$type == 'T' | tme_pgmn_tbedre_ns$type == 'TRUE') #62 slides
-sum(tme_pgmn_tbedre_ns$type == 'L') # 0 slides
-length(unique(tme_pgmn_tbedre_ns$patient_id))
-
-tme_pgmn_tbedre_sk <- tme_pgmn_tbedre %>%
-  filter(sk_type == 'smoker')
-#371 slides
-sum(tme_pgmn_tbedre_sk$type == 'T' | tme_pgmn_tbedre_sk$type == 'TRUE') #371 slides
-sum(tme_pgmn_tbedre_sk$type == 'L') # 0 slides
-length(unique(tme_pgmn_tbedre_sk$patient_id))
-
-tme_pgmn_tbedre$tme_all <- rowSums(tme_pgmn_tbedre[, 3:12], na.rm = TRUE)
-tme_pgmn_lungre$tme_all <- rowSums(tme_pgmn_lungre[, 3:12], na.rm = TRUE)
-
-tme_pgmn_tbedreL <- tme_pgmn_tbedre %>%
-  filter(type == 'L') %>%
-  filter(tme_all >0 )
-tme_pgmn_tbedreT <- tme_pgmn_tbedre %>%
-  filter(type == 'T' | type == 'TRUE') %>%
-  filter(tme_all >0 ) #to filter out slides without pgmn
-
-
-tme_pgmn_lungreL <- tme_pgmn_lungre %>%
-  filter(tme_all >0 ) # pure L slides and L regions from T slides
-
-
-df_long <- pivot_longer(
-  tme_pgmn_tbedreT,
-  cols = -c(ID, region_type, patient_id,  comment, type, sk_type, tme_all),
-  names_to = "tissue_type",
-  values_to = "percentage"
-)
-
-stroma_order <- df_long %>%
-  filter(tissue_type == "stroma") %>%
-  arrange(desc(percentage)) %>%
-  pull(ID)
-
-df_long$ID <- factor(df_long$ID, levels = stroma_order)
-df_long$tissue_type <- factor(df_long$tissue_type, levels = c("stroma", "tumor", "inflammatory", "macrophage", 
-                                                              "alveoli", "bronchi", "microvessel", "necrosis", "adipose", "muscle"))
-tissue_colors <- c(
-  tumor        = "#843C39",
-  stroma       = "#fdae61",
-  inflammatory = "#CC79A7",
-  macrophage   = "#756BB1",
-  alveoli      = "#1a9850",
-  bronchi      = "#9EDAE5",
-  microvessel  = "cornflowerblue",
-  necrosis     = "#F0E442",
-  adipose      = "#8CA252",
-  muscle       = "darkblue"
-)
-
-#'tumor' = '#800000', 'stroma' = '#ffff00', 'inflammatory' = '#ff0000', "macrophage" = '#800080',
-#"alveoli" = '#008000', "bronchi" = '#00ffff', "microvessel" = '#0000ff', "necrosis" = '#ff00ff',
-#"adipose" = '#808000', "muscle" = '#000080'
-
-
-setwd('/Users/xpan7/Library/CloudStorage/OneDrive-Insidein_housenderson/yuanlab/Manuscripts/LPI/fig/v12/fig2/100')
-fig2f2<-ggplot(df_long, aes(x = ID, y = percentage, fill = tissue_type)) +
-  geom_bar(stat = "identity") +
-  labs(x = "Sample", y = "Percentage") +
-  theme_minimal() +
-  theme(axis.text.x = element_blank(), 
-        axis.ticks.y = element_line(), 
-        legend.position = "none") +
-  scale_fill_manual(values = tissue_colors)
-print(fig2f2)
-ggsave(fig2f2, file='./figS2f_pgmn_neighbour28_tmeper_tcga.pdf', width = 6, height = 5, units = "cm")
-
-
-df <- tme_pgmn_tbedreT[, c(3: 12)]  # where tissue_types is your 10 columns
+tme_pgmn_T_tcga <- read.csv('/Volumes/yuan_lab/TIER2/anthracosis/0AI_PM_ST_code/data/tcga_pm_tme.csv')
+df <- tme_pgmn_T_tcga[, c(3: 12)]  # where tissue_types is your 10 columns
 
 tissue_avg <- colMeans(df) |> 
   as.data.frame() |> 
@@ -840,9 +729,8 @@ tissue_type_order <- tissue_avg %>%
   pull(tissue_type)
 
 tissue_avg$tissue_type <- factor(tissue_avg$tissue_type, levels = tissue_type_order)
-write.csv(tissue_avg, 'tissue_type_freq_tcga.csv', row.names = FALSE)
 
-fig2g2 <- ggplot(tissue_avg, aes(x = "", y = average_per, fill = tissue_type)) +
+fig3e2 <- ggplot(tissue_avg, aes(x = "", y = average_per, fill = tissue_type)) +
   geom_bar(stat = "identity") +
   coord_polar(theta = "y") +
   geom_text(aes(label = label),
@@ -851,33 +739,12 @@ fig2g2 <- ggplot(tissue_avg, aes(x = "", y = average_per, fill = tissue_type)) +
   scale_fill_manual(values = tissue_colors) +
   theme_void() +
   theme(legend.position = 'none')
-print(fig2g2)
-ggsave(fig2g2, file='./fig2i_pgmn_neighbour28_tmeper_avgPie_tcga.pdf', width = 5, height = 5, units = "cm")
+print(fig3e2)
+ggsave(fig3e2, file='./figure3/fig2e_pgmn_neighbour20_tmeper_avgPie_tcga.pdf', width = 5, height = 5, units = "cm")
 
 
 ###statistical comparison with global tme per
-tme_global <- read_excel('/Volumes/yuan_lab/TIER2/anthracosis/tcga-luad/tme/mit-b3-finetuned-TCGAbcssWsss10xLuadMacroMuscle-40x896-20x512-10x256re/tcga_tmex8_tbedRefine_alveoliLN.xlsx')
-tme_global[c('inflam_norm', 'macro_norm')] <- NULL
-
-tbed_global <- read_excel('/Volumes/xpan7/pipelines/anthracosis/Ranalysis/outputdata/tcga_pgmn_tbedRefine_alveoliLN.xlsx')
-tbed_global[c('pgmn_tbed', 'pgmn_norm', 'tissue8')] <- NULL
-
-tme_global <- merge(tme_global, tbed_global, by='ID')
-tme_globalre <- tme_global %>%
-  right_join(tcga_slidere, by='ID') %>%
-  filter(type == 'T' | type == 'TRUE') #433 slides
-
-tme_globalre$inflam_per <- 100*tme_globalre$inflam_tbed / (tme_globalre$tumor_bed + 0.000001)
-tme_globalre$macro_per <- 100*tme_globalre$macro_tbed / (tme_globalre$tumor_bed + 0.000001)
-tme_globalre$stroma_per <- 100*tme_globalre$stroma_tbed / (tme_globalre$tumor_bed + 0.000001)
-tme_globalre$tumor_per <- 100*tme_globalre$tumor_tbed / (tme_globalre$tumor_bed + 0.000001)
-
-tme_globalre[c(2:10)] <- NULL
-
-tme_pgmn_global <- tme_pgmn_tbedreT %>%
-  left_join(tme_globalre, by='ID')
-#write.csv(tme_pgmn_global, '/Volumes/xpan7/pipelines/anthracosis/Ranalysis/outputdata/fig2tme20_pgmnTCGA.csv', row.names = FALSE)
-
+tme_pgmn_global_tcga <- read.csv('../data/tcga_tme_pgmn20_global.csv')
 cell_map <- c(
   tumor = "Tumor",       tumor_per = "Tumor",
   stroma = "Stroma",     stroma_per = "Stroma",
@@ -888,7 +755,7 @@ cell_map <- c(
   macrophage = "Macrophage", macro_per = "Macrophage"
 )
 
-long <- tme_pgmn_global %>%
+long <- tme_pgmn_global_tcga %>%
   dplyr::select(ID,
                 tumor, tumor_per,
                 stroma, stroma_per,
@@ -905,7 +772,7 @@ long <- tme_pgmn_global %>%
   ) %>%
   dplyr::select(ID, cell, type, value)
 
-figS2g2 <- ggplot(long, aes(x = type, y = value, fill = type)) +
+fig3g <- ggplot(long, aes(x = type, y = value, fill = type)) +
   geom_boxplot(width = 0.5, outlier.shape = NA, alpha = 0.8, color = "black") +
   geom_line(aes(group = ID), alpha = 0.5, color = "gray") +
   geom_point(size = 0.2, color = "black", alpha = 0.5,position = position_jitter(width = 0.05, seed = 1)) +
@@ -926,142 +793,15 @@ figS2g2 <- ggplot(long, aes(x = type, y = value, fill = type)) +
     paired = TRUE,
     label = "p.format"
   )
-print(figS2g2)
-ggsave(figS2g2, file='./figS2g_pgmn_neighbour28_global_box_TCGA.pdf', width = 8, height = 5, units = "cm")
+print(fig3g)
+ggsave(fig3g, file='./figure3/fig3g_pgmn_neighbour20_global_box_TCGA.pdf', width = 8, height = 5, units = "cm")
 
 
 
 
 ###CPTAC
-cptac_slide <- read.csv('/Volumes/xpan7/pipelines/anthracosis/Ranalysis/outputdata/cptac_allslideID_keep.csv')
-#patients to be kept
-cptac <- read.csv('/Volumes/xpan7/pipelines/anthracosis/Ranalysis/outputdata/cptacLNRE_dstlAug20_MUTcancercell_full.csv')
-
-cptac_patient <- cptac[c('patient_id', 'type')]
-rm(cptac)
-colnames(cptac_patient)[colnames(cptac_patient) == 'type'] <- 'sk_type'
-cptac_slidere <- cptac_slide %>%
-  filter(patient_id %in% cptac_patient$patient_id) %>%
-  left_join(cptac_patient, by = 'patient_id')
-
-length(unique(cptac_slidere$patient_id)) #187
-length(unique(cptac_patient$patient_id))
-
-plot_df <- cptac_slidere %>%
-  group_by(patient_id, type) %>%
-  summarise(n = n(), .groups = "drop")
-
-ggplot(plot_df, aes(x = patient_id, y = n, fill = type)) +
-  geom_bar(stat = "identity", position = "stack", width = 0.8) +
-  scale_fill_manual(values = c("T" = "#BC6892", "L" = "#DFABC9")) +
-  labs(x = "Patient", y = "Number of Slides", fill = "Type") +
-  theme_minimal(base_size = 12) +
-  theme(panel.grid = element_blank())
-
-
-pattern = '_TMEper.xlsx' #'Neighbour_TMEper.xlsx'
-dilate_pattern = 'dilate28'
-tme_pgmn <- read_excel(paste0('/Volumes/yuan_lab/TIER2/anthracosis/cptac_luad/pgmn_segformer_stainedgeV3/0neighbourTME/', dilate_pattern, '/pgmnNeighbour', pattern))
-colnames(tme_pgmn)[colnames(tme_pgmn) == 'file_name'] <- 'ID'
-tme_pgmn_tbed <- tme_pgmn %>%
-  filter(region_type == 'tbed')
-tme_pgmn_lung <- tme_pgmn %>%
-  filter(region_type == 'lung')
-
-tme_pgmn_tbedre <- tme_pgmn_tbed %>%
-  right_join(cptac_slidere, by='ID')
-
-tme_pgmn_lungre <- tme_pgmn_lung %>%
-  right_join(cptac_slidere, by='ID')
-
-#880 slides
-sum(tme_pgmn_tbedre$type == 'T' | tme_pgmn_tbedre$type == 'TRUE') #562 slides
-sum(tme_pgmn_tbedre$type == 'L' ) #318 slides
-
-tme_pgmn_tbedre_ns <- tme_pgmn_tbedre %>%
-  filter(sk_type == 'never')
-#366 slides
-sum(tme_pgmn_tbedre_ns$type == 'T' | tme_pgmn_tbedre_ns$type == 'TRUE') #245 slides
-sum(tme_pgmn_tbedre_ns$type == 'L') # 121 slides
-length(unique(tme_pgmn_tbedre_ns$patient_id))
-
-tme_pgmn_tbedre_sk <- tme_pgmn_tbedre %>%
-  filter(sk_type == 'smoker')
-#515 slides
-sum(tme_pgmn_tbedre_sk$type == 'T' | tme_pgmn_tbedre_sk$type == 'TRUE') #317 slides, "C3L-03262-23": not good for tbed seg, thus removed
-sum(tme_pgmn_tbedre_sk$type == 'L') # 197 slides
-length(unique(tme_pgmn_tbedre_sk$patient_id)) #113 patients
-
-tme_pgmn_tbedre$tme_all <- rowSums(tme_pgmn_tbedre[, 3:12], na.rm = TRUE)
-tme_pgmn_lungre$tme_all <- rowSums(tme_pgmn_lungre[, 3:12], na.rm = TRUE)
-
-tme_pgmn_tbedreL <- tme_pgmn_tbedre %>%
-  filter(type == 'L') %>%
-  filter(tme_all >0 )
-
-tme_pgmn_tbedreT <- tme_pgmn_tbedre %>%
-  filter(type == 'T' | type == 'TRUE') %>%
-  filter(tme_all >0 ) #to filter out slides without pgmn
-
-tme_pgmn_lungreL <- tme_pgmn_lungre %>%
-  filter(tme_all >0 ) # pure L slides and L regions from T slides
-
-#######didn't include L slides that misclassified as tbed
-tme_pgmn_lungreL <- rbind(tme_pgmn_lungreL, tme_pgmn_tbedreL)
-tme_pgmn_lungreLmean <- tme_pgmn_lungreL %>%
-  group_by(ID) %>%
-  summarise( ) 
-#######
-
-length(unique(tme_pgmn_lungreL$ID))
-
-
-df_long <- pivot_longer(
-  tme_pgmn_tbedreT,
-  cols = -c(ID, region_type, patient_id, type, sk_type, tme_all),
-  names_to = "tissue_type",
-  values_to = "percentage"
-)
-
-stroma_order <- df_long %>%
-  filter(tissue_type == "stroma") %>%
-  arrange(desc(percentage)) %>% #desc
-  pull(ID)
-
-df_long$ID <- factor(df_long$ID, levels = stroma_order)
-df_long$tissue_type <- factor(df_long$tissue_type, levels = c( "stroma", "tumor", "inflammatory", "macrophage", 
-                                                               "alveoli", "bronchi", "microvessel", "necrosis", "adipose", "muscle"))
-tissue_colors <- c(
-  tumor        = "#843C39",
-  stroma       = "#fdae61",
-  inflammatory = "#CC79A7",
-  macrophage   = "#756BB1",
-  alveoli      = "#1a9850",
-  bronchi      = "#9EDAE5",
-  microvessel  = "cornflowerblue",
-  necrosis     = "#F0E442",
-  adipose      = "#8CA252",
-  muscle       = "darkblue"
-)
-
-#'tumor' = '#800000', 'stroma' = '#ffff00', 'inflammatory' = '#ff0000', "macrophage" = '#800080',
-#"alveoli" = '#008000', "bronchi" = '#00ffff', "microvessel" = '#0000ff', "necrosis" = '#ff00ff',
-#"adipose" = '#808000', "muscle" = '#000080'
-
-setwd('/Users/xpan7/Library/CloudStorage/OneDrive-Insidein_housenderson/yuanlab/Manuscripts/LPI/fig/v12/fig2/100')
-fig2f3<-ggplot(df_long, aes(x = ID, y = percentage, fill = tissue_type)) +
-  geom_bar(stat = "identity") +
-  labs(x = "Sample", y = "Percentage") +
-  theme_minimal() +
-  theme(axis.text.x = element_blank(), 
-        axis.ticks.y = element_line(), 
-        legend.position = "none") +
-  scale_fill_manual(values = tissue_colors)
-print(fig2f3)
-ggsave(fig2f3, file='./figS2f_pgmn_neighbour28_tmeper_cptac.pdf', width = 6, height = 5, units = "cm")
-
-
-df <- tme_pgmn_tbedreT[, c(3: 12)]  # where tissue_types is your 10 columns
+tme_pgmn_T_cptac <- read.csv('/Volumes/yuan_lab/TIER2/anthracosis/0AI_PM_ST_code/data/cptac_pm_tme.csv')
+df <- tme_pgmn_T_cptac[, c(3: 12)]  # where tissue_types is your 10 columns
 tissue_avg <- colMeans(df) |> 
   as.data.frame() |> 
   rownames_to_column("tissue_type") 
@@ -1078,9 +818,8 @@ tissue_type_order <- tissue_avg %>%
   pull(tissue_type)
 
 tissue_avg$tissue_type <- factor(tissue_avg$tissue_type, levels = tissue_type_order)
-write.csv(tissue_avg, 'tissue_type_freq_cptac.csv', row.names = FALSE)
 
-fig2g3 <- ggplot(tissue_avg, aes(x = "", y = average_per, fill = tissue_type)) +
+fig3e3 <- ggplot(tissue_avg, aes(x = "", y = average_per, fill = tissue_type)) +
   geom_bar(stat = "identity") +
   coord_polar(theta = "y") +
   geom_text(aes(label = label),
@@ -1089,32 +828,12 @@ fig2g3 <- ggplot(tissue_avg, aes(x = "", y = average_per, fill = tissue_type)) +
   scale_fill_manual(values = tissue_colors) +
   theme_void() +
   theme(legend.position = 'none')
-print(fig2g3)
-ggsave(fig2g3, file='./fig2i_pgmn_neighbour28_tmeper_avgPie_cptac.pdf', width = 5, height = 5, units = "cm")
+print(fig3e3)
+ggsave(fig3e3, file='./figure3/fig34_pgmn_neighbour20_tmeper_avgPie_cptac.pdf', width = 5, height = 5, units = "cm")
+
 
 ###statistical comparison with global tme per
-tme_global <- read_excel('/Volumes/yuan_lab/TIER2/anthracosis/cptac_luad/mit-b3-finetuned-TCGAbcssWsss10xLuadMacroMuscle-40x896-20x512-10x256re/cptac_tmex8_tbedRefine_alveoli.xlsx')
-tme_global[c('inflam_norm', 'macro_norm')] <- NULL
-
-tbed_global <- read_excel('/Volumes/xpan7/pipelines/anthracosis/Ranalysis/outputdata/cptac_pgmn_tbedRefine_alveoli.xlsx')
-tbed_global[c('pgmn_tbed', 'pgmn_norm', 'tissue8')] <- NULL
-
-tme_global <- merge(tme_global, tbed_global, by='ID')
-tme_globalre <- tme_global %>%
-  right_join(cptac_slidere, by='ID') %>%
-  filter(type == 'T' | type == 'TRUE') #562 slides
-
-tme_globalre$inflam_per <- 100*tme_globalre$inflam_tbed / (tme_globalre$tumor_bed + 0.000001)
-tme_globalre$macro_per <- 100*tme_globalre$macro_tbed / (tme_globalre$tumor_bed + 0.000001)
-tme_globalre$stroma_per <- 100*tme_globalre$stroma_tbed / (tme_globalre$tumor_bed + 0.000001)
-tme_globalre$tumor_per <- 100*tme_globalre$tumor_tbed / (tme_globalre$tumor_bed + 0.000001)
-
-tme_globalre[c(2:9)] <- NULL
-
-tme_pgmn_global <- tme_pgmn_tbedreT %>%
-  left_join(tme_globalre, by='ID')
-#write.csv(tme_pgmn_global, '/Volumes/xpan7/pipelines/anthracosis/Ranalysis/outputdata/fig2tme20_pgmnCPTAC.csv', row.names = FALSE)
-
+tme_pgmn_global_cptac <- read.csv('../data/cptac_tme_pgmn20_global.csv')
 cell_map <- c(
   tumor = "Tumor",       tumor_per = "Tumor",
   stroma = "Stroma",     stroma_per = "Stroma",
@@ -1125,7 +844,7 @@ cell_map <- c(
   macrophage = "Macrophage", macro_per = "Macrophage"
 )
 
-long <- tme_pgmn_global %>%
+long <- tme_pgmn_global_cptac %>%
   dplyr::select(ID,
                 tumor, tumor_per,
                 stroma, stroma_per,
@@ -1142,7 +861,7 @@ long <- tme_pgmn_global %>%
   ) %>%
   dplyr::select(ID, cell, type, value)
 
-figS2g3 <- ggplot(long, aes(x = type, y = value, fill = type)) +
+fig3h <- ggplot(long, aes(x = type, y = value, fill = type)) +
   geom_boxplot(width = 0.5, outlier.shape = NA, alpha = 0.8, color = "black") +
   geom_line(aes(group = ID), alpha = 0.5, color = "gray") +
   geom_point(size = 0.2, color = "black", alpha = 0.5,position = position_jitter(width = 0.05, seed = 1)) +
@@ -1163,79 +882,5 @@ figS2g3 <- ggplot(long, aes(x = type, y = value, fill = type)) +
     paired = TRUE,
     label = "p.format"
   )
-print(figS2g3)
-ggsave(figS2g3, file='./figS2g_pgmn_neighbour28_global_box_CPTAC.pdf', width = 8, height = 5, units = "cm")
-
-
-###### sensitive analysis for rebuttal ######
-
-library(tidyverse)
-
-# colors
-tissue_colors <- c(
-  tumor        = "#843C39",
-  stroma       = "#fdae61",
-  inflammatory = "#CC79A7",
-  macrophage   = "#756BB1",
-  alveoli      = "#1a9850",
-  bronchi      = "#9EDAE5",
-  microvessel  = "cornflowerblue",
-  necrosis     = "#F0E442",
-  adipose      = "#8CA252",
-  muscle       = "darkblue"
-)
-
-# file paths
-setwd('/Users/xpan7/Library/CloudStorage/OneDrive-Insidein_housenderson/yuanlab/Manuscripts/LPI/fig/v12/fig2')
-data_pattern = 'cptac'
-files <- c(
-  "20um"  = paste0("./20/tissue_type_freq_", data_pattern, ".csv"),
-  "40um"  = paste0("./40/tissue_type_freq_", data_pattern, ".csv"),
-  "60um"  = paste0("./60/tissue_type_freq_", data_pattern, ".csv"),
-  "80um"  = paste0("./80/tissue_type_freq_", data_pattern, ".csv"),
-  "100um" = paste0("./100/tissue_type_freq_", data_pattern, ".csv")
-)
-
-stack_order <- c(
-  "stroma", "tumor", "inflammatory", "macrophage", "alveoli",
-  "necrosis", "microvessel", "bronchi", "adipose", "muscle"
-)
-
-# read and combine
-df_all <- purrr::imap_dfr(files, ~{
-  read.csv(.x) %>%
-    dplyr::select(tissue_type, average_per) %>%
-    mutate(proximity = .y)
-})
-
-# set factor order
-df_all <- df_all %>%
-  mutate(
-    proximity = factor(proximity, levels = c("20um", "40um", "60um", "80um", "100um")),
-    tissue_type = factor(tissue_type, levels = stack_order)
-  )
-
-# stacked barplot
-p <- ggplot(df_all, aes(x = proximity, y = average_per, fill = tissue_type)) +
-  geom_bar(stat = "identity", width = 0.75, color = "black", linewidth = 0.2,
-           position = position_stack(reverse = TRUE)) +
-  scale_fill_manual(
-    values = tissue_colors,
-    breaks = stack_order,
-    drop = FALSE
-  ) +
-  labs(
-    x = "Neighbour proximity",
-    y = "Average tissue percentage (%)",
-    fill = "Tissue type"
-  ) +
-  theme_classic(base_size = 6)
-print(p)
-
-ggsave(p, file=paste0("tissue_composition_by_proximity_", data_pattern, ".pdf"), width =6, height = 4, units = "cm")
-
-
-
-
-
-
+print(fig3h)
+ggsave(fig3h, file='./figure3/fig3h_pgmn_neighbour20_global_box_CPTAC.pdf', width = 8, height = 5, units = "cm")
